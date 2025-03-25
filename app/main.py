@@ -4,8 +4,8 @@ from fastapi.responses import JSONResponse
 import pandas as pd
 import io
 import logging
-from .database import SessionLocal, engine
-from .models import Base, Department, Job, HiredEmployee
+from database import SessionLocal, engine
+from models import Base, Department, Job, HiredEmployee
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
