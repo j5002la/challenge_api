@@ -29,6 +29,26 @@ TABLE_CONFIG = {
     }
 }
 
+def clean_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
+    """Clean and normalize data, replacing missing values with None"""
+    config = TABLE_CONFIG[table_name]
+    
+    # Convert empty strings to NaN
+    df = df.replace(r'^\s*$', pd.NA, regex=True)
+    
+    # Handle datetime conversion
+    if 'datetime' in df.columns:
+        df['datetime'] = pd.to_datetime(
+            df['datetime'], 
+            format='%Y-%m-%dT%H:%M:%SZ', 
+            errors='coerce'
+        )
+    
+    # Convert all NaN values to None (SQL NULL)
+    df = df.where(pd.notnull(df), None)
+    
+    return df
+
 def validate_data(df: pd.DataFrame, table_name: str):
     config = TABLE_CONFIG.get(table_name)
     if not config:
