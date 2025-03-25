@@ -26,8 +26,7 @@ A FastAPI-based solution for uploading historical data from CSV files to Postgre
 
 1. Clone repository:
 ```bash
-git clone https://github.com/<your-username>/globant-etl.git
-cd globant-etl
+git clone git@github.com:j5002la/challenge_api.git
 ```
 
 2. Install dependencies:
@@ -37,9 +36,38 @@ pip install -r requirements.txt
 
 3. Set up PostgreSQL database:
 ```sql
+-- Create database and user
 CREATE DATABASE globant_db;
+\c globant_db;
+
 CREATE USER globant_user WITH PASSWORD 'globant_pass';
 GRANT ALL PRIVILEGES ON DATABASE globant_db TO globant_user;
+
+-- Create tables
+CREATE TABLE departments (
+    id INT PRIMARY KEY,
+    department VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE jobs (
+    id INT PRIMARY KEY,
+    job VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE hired_employees (
+    id INT PRIMARY KEY,
+    name VARCHAR(255),
+    datetime TIMESTAMP,
+    department_id INT,
+    job_id INT,
+    FOREIGN KEY (department_id) REFERENCES departments(id),
+    FOREIGN KEY (job_id) REFERENCES jobs(id)
+);
+
+-- Create indexes
+CREATE INDEX idx_he_datetime ON hired_employees(datetime);
+CREATE INDEX idx_he_department ON hired_employees(department_id);
+CREATE INDEX idx_he_job ON hired_employees(job_id);
 ```
 
 ## Configuration
