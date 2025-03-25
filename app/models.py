@@ -6,6 +6,9 @@ class Department(Base):
     id = Column(Integer, primary_key=True)
     department = Column(String(255))
 
+    def __repr__(self):
+        return f"<Department(id={self.id}, name={self.department})>"
+
 class Job(Base):
     __tablename__ = "jobs"
     id = Column(Integer, primary_key=True)
