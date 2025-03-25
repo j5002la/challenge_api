@@ -7,11 +7,11 @@ import logging
 from database import SessionLocal, engine
 from models import Base, Department, Job, HiredEmployee
 
-# Initialize logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Initialize tables before app starts
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+logger = logging.getLogger(__name__)
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
