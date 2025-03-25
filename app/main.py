@@ -69,7 +69,9 @@ async def upload_csv(
         contents = await file.read()
         df = pd.read_csv(
             io.StringIO(contents.decode('utf-8')),
+            header=None,
             names=config["columns"]
+
         )
     except Exception as e:
         logger.error(f"CSV Error: {str(e)}")
