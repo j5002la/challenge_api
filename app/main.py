@@ -48,8 +48,8 @@ def clean_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
         if col.endswith('_id') or col == 'id':
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    # Convert all NaN/NaT to None
-    df = df.where(pd.notnull(df), None)
+    # Explicit replacement of all NaN/NaT values with None
+    df = df.applymap(lambda x: None if pd.isna(x) else x)
     
     return df
 
