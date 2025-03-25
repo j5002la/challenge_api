@@ -14,7 +14,6 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 logger = logging.getLogger(__name__)
 
-# Table configurations (without dtypes)
 TABLE_CONFIG = {
     "departments": {
         "columns": ["id", "department"],
@@ -31,7 +30,7 @@ TABLE_CONFIG = {
 }
 
 def clean_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
-    """Clean data by replacing empty/missing values with None"""
+    """Enhanced cleaning with proper numeric NULL handling"""
     # Convert empty strings to None
     df = df.replace(r'^\s*$', None, regex=True)
     
@@ -43,12 +42,14 @@ def clean_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
             format='%Y-%m-%dT%H:%M:%SZ'
         )
     
-    # Convert numeric columns to numbers
+    # Special handling for ID columns
     for col in df.columns:
-        if col.endswith('_id') or col == 'id':
+        if col.endswith(('_id', 'id')):
+            # Convert to nullable integer type
             df[col] = pd.to_numeric(df[col], errors='coerce')
+            df[col] = df[col].astype(pd.Int64Dtype())
     
-    # Explicit replacement of all NaN/NaT values with None
+    # Convert all pandas nulls to Python None
     df = df.applymap(lambda x: None if pd.isna(x) else x)
     
     return df
@@ -66,7 +67,6 @@ async def upload_csv(
         raise HTTPException(status_code=400, detail="Batch size must be 1-1000")
 
     try:
-        # Read CSV as strings to preserve raw data
         contents = await file.read()
         df = pd.read_csv(
             io.StringIO(contents.decode('utf-8')),
@@ -81,13 +81,9 @@ async def upload_csv(
 
     db = SessionLocal()
     try:
-        # Clean data
         df = clean_data(df, table_name)
-        
-        # Convert to records
         records = df.to_dict(orient='records')
         
-        # Batch insert
         total_inserted = 0
         for i in range(0, len(records), batch_size):
             try:
