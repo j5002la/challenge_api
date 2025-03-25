@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 import pandas as pd
 import io
 import logging
+from datetime import datetime
 from database import SessionLocal, engine
 from models import Base, Department, Job, HiredEmployee
 
@@ -13,7 +14,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 logger = logging.getLogger(__name__)
 
-# Table configurations
+# Table configurations (without dtypes)
 TABLE_CONFIG = {
     "departments": {
         "columns": ["id", "department"],
@@ -30,38 +31,27 @@ TABLE_CONFIG = {
 }
 
 def clean_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
-    """Clean and normalize data, replacing missing values with None"""
-    config = TABLE_CONFIG[table_name]
-    
-    # Convert empty strings to NaN
-    df = df.replace(r'^\s*$', pd.NA, regex=True)
+    """Clean data by replacing empty/missing values with None"""
+    # Convert empty strings to None
+    df = df.replace(r'^\s*$', None, regex=True)
     
     # Handle datetime conversion
     if 'datetime' in df.columns:
         df['datetime'] = pd.to_datetime(
             df['datetime'], 
-            format='%Y-%m-%dT%H:%M:%SZ', 
-            errors='coerce'
+            errors='coerce', 
+            format='%Y-%m-%dT%H:%M:%SZ'
         )
     
-    # Convert all NaN values to None (SQL NULL)
+    # Convert numeric columns to numbers
+    for col in df.columns:
+        if col.endswith('_id') or col == 'id':
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # Convert all NaN/NaT to None
     df = df.where(pd.notnull(df), None)
     
     return df
-
-def validate_data(df: pd.DataFrame, table_name: str):
-    config = TABLE_CONFIG.get(table_name)
-    if not config:
-        raise ValueError("Invalid table name")
-    
-    if len(df.columns) != len(config["columns"]):
-        raise ValueError(f"Expected {len(config['columns'])} columns, got {len(df.columns)}")
-
-    if df.isnull().values.any():
-        raise ValueError("CSV contains null values")
-
-    if not pd.api.types.is_integer_dtype(df["id"]):
-        raise ValueError("ID column must contain integers")
 
 @app.post("/upload/{table_name}")
 async def upload_csv(
@@ -69,70 +59,59 @@ async def upload_csv(
     file: UploadFile = File(...),
     batch_size: int = 1000
 ):
-    if not 1 <= batch_size <= 1000:
-        return JSONResponse(
-            status_code=400,
-            content={"message": "Batch size must be between 1 and 1000"}
-        )
+    if table_name not in TABLE_CONFIG:
+        raise HTTPException(status_code=400, detail="Invalid table name")
 
-    config = TABLE_CONFIG.get(table_name)
-    if not config:
-        return JSONResponse(
-            status_code=400,
-            content={"message": "Invalid table name"}
-        )
+    if not 1 <= batch_size <= 1000:
+        raise HTTPException(status_code=400, detail="Batch size must be 1-1000")
 
     try:
+        # Read CSV as strings to preserve raw data
         contents = await file.read()
         df = pd.read_csv(
             io.StringIO(contents.decode('utf-8')),
             header=None,
-            names=config["columns"]
-
+            names=TABLE_CONFIG[table_name]["columns"],
+            dtype=str,
+            keep_default_na=False
         )
     except Exception as e:
-        logger.error(f"CSV Error: {str(e)}")
-        return JSONResponse(
-            status_code=400,
-            content={"message": f"CSV Error: {str(e)}"}
-        )
-
-    try:
-        validate_data(df, table_name)
-    except ValueError as e:
-        return JSONResponse(
-            status_code=400,
-            content={"message": str(e)}
-        )
+        logger.error(f"CSV read error: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"CSV parsing error: {str(e)}")
 
     db = SessionLocal()
-    total_inserted = 0
     try:
-        for i in range(0, len(df), batch_size):
-            batch = df.iloc[i:i+batch_size]
+        # Clean data
+        df = clean_data(df, table_name)
+        
+        # Convert to records
+        records = df.to_dict(orient='records')
+        
+        # Batch insert
+        total_inserted = 0
+        for i in range(0, len(records), batch_size):
             try:
-                db.bulk_insert_mappings(config["model"], batch.to_dict(orient='records'))
+                db.bulk_insert_mappings(
+                    TABLE_CONFIG[table_name]["model"], 
+                    records[i:i+batch_size]
+                )
                 db.commit()
-                total_inserted += len(batch)
+                total_inserted += len(records[i:i+batch_size])
             except Exception as e:
                 db.rollback()
-                logger.error(f"Database Error: {str(e)}")
-                return JSONResponse(
-                    status_code=500,
-                    content={"message": f"Database Error: {str(e)}"}
-                )
-        return JSONResponse(
-            status_code=200,
-            content={
-                "message": "Data uploaded successfully",
-                "total_records": len(df),
-                "inserted_records": total_inserted,
-                "batches_used": (len(df) // batch_size) + 1
-            }
-        )
+                logger.error(f"Database error: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Batch insert failed: {str(e)}")
+
+        return {
+            "message": "Upload successful",
+            "received": len(df),
+            "inserted": total_inserted,
+            "failed": len(df) - total_inserted
+        }
+
     finally:
         db.close()
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
