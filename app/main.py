@@ -30,27 +30,31 @@ TABLE_CONFIG = {
 }
 
 def clean_data(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
-    """Enhanced cleaning with proper numeric NULL handling"""
+    """Handle datetime NaT conversion to None properly"""
     # Convert empty strings to None
     df = df.replace(r'^\s*$', None, regex=True)
     
-    # Handle datetime conversion
+    # Special handling for datetime column
     if 'datetime' in df.columns:
+        # Convert to datetime, coercing errors to NaT
         df['datetime'] = pd.to_datetime(
-            df['datetime'], 
-            errors='coerce', 
+            df['datetime'],
+            errors='coerce',
             format='%Y-%m-%dT%H:%M:%SZ'
         )
+        # Convert datetime column to object type to allow None values
+        df['datetime'] = df['datetime'].astype(object)
+        # Replace NaT with None explicitly
+        df['datetime'] = df['datetime'].where(df['datetime'].notnull(), None)
     
-    # Special handling for ID columns
+    # Handle ID columns with nullable integers
     for col in df.columns:
         if col.endswith(('_id', 'id')):
-            # Convert to nullable integer type
             df[col] = pd.to_numeric(df[col], errors='coerce')
-            df[col] = df[col].astype(pd.Int64Dtype())
+            df[col] = df[col].astype(pd.Int64Dtype())  # Pandas nullable integer
     
-    # Convert all pandas nulls to Python None
-    df = df.applymap(lambda x: None if pd.isna(x) else x)
+    # Convert all remaining pandas null types to Python None
+    df = df.where(pd.notnull(df), None)
     
     return df
 
