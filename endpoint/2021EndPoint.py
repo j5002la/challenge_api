@@ -1,3 +1,4 @@
+import os
 from flask import Flask, jsonify
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
