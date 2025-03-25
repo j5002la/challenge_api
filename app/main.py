@@ -13,9 +13,6 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 logger = logging.getLogger(__name__)
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
-
 # Table configurations
 TABLE_CONFIG = {
     "departments": {
